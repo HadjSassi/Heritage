@@ -33,3 +33,6 @@ test:
 	$(COMPOSE) run --rm $(FRONTEND_SERVICE) npm test -- --run
 	$(COMPOSE) run --rm $(BACKEND_SERVICE) npm test
 
+seed:
+	$(COMPOSE) exec service-auth node seed.js
+
