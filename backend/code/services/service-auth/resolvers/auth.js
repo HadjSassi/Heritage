@@ -1,5 +1,5 @@
 const pool = require('../db/postgres')
-const bcrypt = require('bcrypt')
+const bcrypt = require('bcryptjs')
 const jwt = require('jsonwebtoken')
 const { createClient } = require('redis')
 
