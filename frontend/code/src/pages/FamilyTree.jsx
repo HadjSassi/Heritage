@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useQuery, useMutation } from '@apollo/client'
 import { ReactFlow, Background, Controls, MiniMap, addEdge, useNodesState, useEdgesState } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
@@ -47,18 +47,22 @@ export default function FamilyTree() {
   const [newPerson, setNewPerson] = useState({ firstName: '', lastName: '', birthDate: '', gender: 'UNKNOWN' })
 
   const { data: treesData, refetch: refetchTrees } = useQuery(GET_FAMILY_TREES)
-  const { data: treeData } = useQuery(GET_FAMILY_TREE, { variables: { id: selectedTreeId }, skip: !selectedTreeId })
+  const { data: treeData, refetch: refetchTree } = useQuery(GET_FAMILY_TREE, { variables: { id: selectedTreeId }, skip: !selectedTreeId })
 
   const [createTree] = useMutation(CREATE_FAMILY_TREE)
   const [addPerson] = useMutation(ADD_PERSON)
   const [importGedcom] = useMutation(IMPORT_GEDCOM)
 
-  const { nodes: initNodes, edges: initEdges } = treeData?.familyTree
-    ? toFlow(treeData.familyTree.persons)
-    : { nodes: [], edges: [] }
+  const [nodes, setNodes, onNodesChange] = useNodesState([])
+  const [edges, setEdges, onEdgesChange] = useEdgesState([])
 
-  const [nodes, , onNodesChange] = useNodesState(initNodes)
-  const [edges, setEdges, onEdgesChange] = useEdgesState(initEdges)
+  useEffect(() => {
+    const { nodes: n, edges: e } = treeData?.familyTree
+      ? toFlow(treeData.familyTree.persons)
+      : { nodes: [], edges: [] }
+    setNodes(n)
+    setEdges(e)
+  }, [treeData, setNodes, setEdges])
 
   const onConnect = useCallback((params) => setEdges((eds) => addEdge(params, eds)), [setEdges])
 
@@ -73,12 +77,17 @@ export default function FamilyTree() {
   const handleAddPerson = async (e) => {
     e.preventDefault()
     await addPerson({ variables: { treeId: selectedTreeId, input: newPerson } })
+    await refetchTree()
+    await refetchTrees()
     setShowAddPerson(false)
+    setNewPerson({ firstName: '', lastName: '', birthDate: '', gender: 'UNKNOWN' })
   }
 
   const handleGedcomImport = async (file) => {
     const text = await file.text()
     await importGedcom({ variables: { treeId: selectedTreeId, gedcomContent: text } })
+    await refetchTree()
+    await refetchTrees()
   }
 
   return (
