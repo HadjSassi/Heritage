@@ -1,0 +1,53 @@
+extend schema @link(url: "https://specs.apollo.dev/federation/v2.0", import: ["@key", "@shareable"])
+
+type Query {
+  matches: [Match!]!
+  match(id: ID!): Match
+}
+
+type Mutation {
+  acceptMatch(id: ID!): Match!
+  rejectMatch(id: ID!): Match!
+  triggerMatching(personId: ID!): [Match!]!
+}
+
+type Match @key(fields: "id") {
+  id: ID!
+  type: MatchType!
+  confidence: Float!
+  status: MatchStatus!
+  personId: ID!
+  person: MatchPerson!
+  matchedPersonId: ID
+  matchedPerson: MatchPerson
+  matchedRecordId: ID
+  matchedRecord: MatchRecord
+  createdAt: String!
+}
+
+type MatchPerson @shareable {
+  id: ID!
+  firstName: String!
+  lastName: String!
+  birthDate: String
+}
+
+type MatchRecord @shareable {
+  id: ID!
+  title: String!
+  type: String!
+  date: String
+  place: String
+}
+
+enum MatchType {
+  TREE
+  RECORD
+}
+
+enum MatchStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
