@@ -1,0 +1,50 @@
+extend schema @link(url: "https://specs.apollo.dev/federation/v2.0", import: ["@key", "@shareable"])
+
+type Query {
+  media(personId: ID): [Media!]!
+  mediaItem(id: ID!): Media
+}
+
+type Mutation {
+  uploadMedia(input: UploadMediaInput!): Media!
+  deleteMedia(id: ID!): Boolean!
+  associateMedia(mediaId: ID!, personId: ID!): Media!
+}
+
+type Media @key(fields: "id") {
+  id: ID!
+  type: MediaType!
+  url: String!
+  thumbnailUrl: String
+  title: String!
+  description: String
+  date: String
+  personId: ID
+  person: MediaPerson
+  uploadedBy: ID
+  createdAt: String!
+}
+
+type MediaPerson @shareable {
+  id: ID!
+  firstName: String!
+  lastName: String!
+}
+
+enum MediaType {
+  PHOTO
+  DOCUMENT
+  AUDIO
+}
+
+input UploadMediaInput {
+  type: MediaType!
+  title: String!
+  description: String
+  date: String
+  personId: ID
+  fileBase64: String
+  fileName: String
+  mimeType: String
+}
+
