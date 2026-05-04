@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MockedProvider } from '@apollo/client/testing'
 import { MemoryRouter } from 'react-router-dom'
-import RecordsSearch from '../../code/src/pages/RecordsSearch'
+import RecordsSearch from '../code/src/pages/RecordsSearch'
 
 describe('RecordsSearch page', () => {
   it('renders search bar', () => {

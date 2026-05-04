@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MockedProvider } from '@apollo/client/testing'
 import { MemoryRouter } from 'react-router-dom'
-import { GET_FAMILY_TREES } from '../../code/src/graphql/queries'
-import FamilyTree from '../../code/src/pages/FamilyTree'
+import { GET_FAMILY_TREES } from '../code/src/graphql/queries'
+import FamilyTree from '../code/src/pages/FamilyTree'
 
 const mocks = [
   {

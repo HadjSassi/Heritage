@@ -2,9 +2,9 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { MockedProvider } from '@apollo/client/testing'
 import { MemoryRouter } from 'react-router-dom'
-import Login from '../../code/src/pages/Login'
-import Register from '../../code/src/pages/Register'
-import { LOGIN } from '../../code/src/graphql/mutations'
+import Login from '../code/src/pages/Login'
+import Register from '../code/src/pages/Register'
+import { LOGIN } from '../code/src/graphql/mutations'
 
 const mockLogin = {
   request: { query: LOGIN, variables: { email: 'test@test.com', password: 'password123' } },
