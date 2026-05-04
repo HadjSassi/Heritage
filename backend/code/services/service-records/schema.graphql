@@ -1,0 +1,62 @@
+extend schema @link(url: "https://specs.apollo.dev/federation/v2.0", import: ["@key", "@shareable"])
+
+type Query {
+  searchRecords(query: String!, filters: RecordFilters, page: Int, limit: Int): SearchResult!
+  record(id: ID!): HistoricalRecord
+}
+
+type Mutation {
+  createRecord(input: RecordInput!): HistoricalRecord!
+  deleteRecord(id: ID!): Boolean!
+}
+
+type SearchResult {
+  total: Int!
+  results: [HistoricalRecord!]!
+}
+
+type HistoricalRecord @key(fields: "id") {
+  id: ID!
+  type: RecordType!
+  title: String!
+  firstName: String
+  lastName: String
+  date: String
+  place: String
+  country: String
+  description: String
+  source: String
+  imageUrl: String
+  createdAt: String!
+}
+
+enum RecordType {
+  BIRTH
+  MARRIAGE
+  DEATH
+  CENSUS
+  IMMIGRATION
+  MILITARY
+  OTHER
+}
+
+input RecordFilters {
+  type: RecordType
+  fromYear: Int
+  toYear: Int
+  country: String
+}
+
+input RecordInput {
+  type: RecordType!
+  title: String!
+  firstName: String
+  lastName: String
+  date: String
+  place: String
+  country: String
+  description: String
+  source: String
+  imageUrl: String
+}
+
