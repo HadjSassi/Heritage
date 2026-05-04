@@ -1,0 +1,17 @@
+.idea/
+node_modules/
+dist/
+build/
+.env
+*.env.local
+.DS_Store
+*.log
+coverage/
+.nyc_output/
+*.cache
+.vite/
+neo4j/data/
+postgres/data/
+redis/data/
+elasticsearch/data/
+minio/data/
