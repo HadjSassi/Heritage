@@ -1,0 +1,107 @@
+extend schema @link(url: "https://specs.apollo.dev/federation/v2.0", import: ["@key", "@shareable"])
+
+type Query {
+  familyTrees: [FamilyTree!]!
+  familyTree(id: ID!): FamilyTree
+  person(id: ID!): Person
+}
+
+type Mutation {
+  createFamilyTree(input: CreateFamilyTreeInput!): FamilyTree!
+  deleteFamilyTree(id: ID!): Boolean!
+  addPerson(treeId: ID!, input: PersonInput!): Person!
+  updatePerson(id: ID!, input: PersonInput!): Person!
+  deletePerson(id: ID!): Boolean!
+  addRelationship(personId: ID!, relatedPersonId: ID!, type: RelationshipType!): Relationship!
+  addLifeEvent(personId: ID!, input: LifeEventInput!): LifeEvent!
+  importGedcom(treeId: ID!, gedcomContent: String!): FamilyTree!
+  exportGedcom(treeId: ID!): String!
+}
+
+type FamilyTree @key(fields: "id") {
+  id: ID!
+  name: String!
+  description: String
+  personCount: Int!
+  ownerId: ID!
+  persons: [Person!]!
+  createdAt: String!
+  updatedAt: String!
+}
+
+type Person @key(fields: "id") {
+  id: ID!
+  treeId: ID!
+  firstName: String!
+  lastName: String!
+  birthDate: String
+  birthPlace: String
+  deathDate: String
+  deathPlace: String
+  gender: Gender!
+  photoUrl: String
+  biography: String
+  lifeEvents: [LifeEvent!]!
+  relationships: [Relationship!]!
+}
+
+type Relationship {
+  type: RelationshipType!
+  person: Person!
+}
+
+type LifeEvent @key(fields: "id") {
+  id: ID!
+  type: LifeEventType!
+  date: String
+  place: String
+  description: String
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  UNKNOWN
+}
+
+enum RelationshipType {
+  PARENT
+  CHILD
+  SPOUSE
+  SIBLING
+}
+
+enum LifeEventType {
+  BIRTH
+  DEATH
+  MARRIAGE
+  DIVORCE
+  IMMIGRATION
+  GRADUATION
+  OTHER
+}
+
+input CreateFamilyTreeInput {
+  name: String!
+  description: String
+}
+
+input PersonInput {
+  firstName: String
+  lastName: String
+  birthDate: String
+  birthPlace: String
+  deathDate: String
+  deathPlace: String
+  gender: Gender
+  photoUrl: String
+  biography: String
+}
+
+input LifeEventInput {
+  type: LifeEventType!
+  date: String
+  place: String
+  description: String
+}
+
