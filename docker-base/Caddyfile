@@ -1,9 +1,4 @@
-{
-	# Frontend — React app
-	handle / {
-		reverse_proxy frontend:3000
-	}
-
+:80 {
 	# GraphQL API Gateway
 	handle /graphql* {
 		reverse_proxy gateway:4000
@@ -13,6 +8,11 @@
 	handle /minio-console* {
 		uri strip_prefix /minio-console
 		reverse_proxy minio:9001
+	}
+
+	# Frontend — React app (catch-all)
+	handle {
+		reverse_proxy frontend:3000
 	}
 }
 

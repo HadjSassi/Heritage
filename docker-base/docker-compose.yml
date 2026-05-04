@@ -30,6 +30,7 @@ services:
       dockerfile: Dockerfile
       args:
         SERVICE: gateway
+    restart: on-failure
     environment:
       - PORT=4000
       - AUTH_SERVICE_URL=http://service-auth:4001/graphql
@@ -53,6 +54,7 @@ services:
       dockerfile: Dockerfile
       args:
         SERVICE: services/service-auth
+    restart: on-failure
     environment:
       - PORT=4001
       - POSTGRES_HOST=postgres
@@ -77,6 +79,7 @@ services:
       dockerfile: Dockerfile
       args:
         SERVICE: services/service-tree
+    restart: on-failure
     environment:
       - PORT=4002
       - POSTGRES_HOST=postgres
@@ -101,6 +104,7 @@ services:
       dockerfile: Dockerfile
       args:
         SERVICE: services/service-records
+    restart: on-failure
     environment:
       - PORT=4003
       - ELASTICSEARCH_URL=http://elasticsearch:9200
@@ -116,6 +120,7 @@ services:
       dockerfile: Dockerfile
       args:
         SERVICE: services/service-media
+    restart: on-failure
     environment:
       - PORT=4004
       - MINIO_ENDPOINT=minio
@@ -142,6 +147,7 @@ services:
       dockerfile: Dockerfile
       args:
         SERVICE: services/service-matching
+    restart: on-failure
     environment:
       - PORT=4005
       - REDIS_URL=redis://redis:6379
