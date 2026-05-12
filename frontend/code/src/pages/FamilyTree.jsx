@@ -6,58 +6,139 @@ import { GET_FAMILY_TREES, GET_FAMILY_TREE } from '../graphql/queries'
 import { CREATE_FAMILY_TREE, ADD_PERSON, UPDATE_PERSON, DELETE_PERSON, ADD_RELATIONSHIP, IMPORT_GEDCOM } from '../graphql/mutations'
 import TreeNode from '../components/TreeNode'
 import FileUpload from '../components/FileUpload'
+import FamilyWizard from '../components/FamilyWizard'
 
 const nodeTypes = { person: TreeNode }
 
-// ── Hierarchical layout ────────────────────────────────────────────────────
+// ── Hierarchical family-tree layout ───────────────────────────────────────────
+// Règles :
+//  - Les parents sont toujours AU-DESSUS de leurs enfants (Y croît vers le bas)
+//  - Les conjoints sont sur la MÊME génération et placés côte à côte
+//  - Les enfants sont centrés sous leurs parents
+//  - Les fratries restent groupées
 function computeLayout(persons) {
-  const NODE_W = 200, NODE_H = 200
-  const childrenOf = {}, parentOf = {}, spouseOf = {}
+  if (!persons.length) return {}
+  const NODE_W = 210, NODE_H = 180, H_GAP = 40, V_GAP = 80
 
-  persons.forEach((p) => {
-    p.relationships?.forEach((r) => {
+  // ── 1. Construire les maps de relations ─────────────────────────────────
+  const childrenOf = {} // parentId  → Set<childId>
+  const parentsOf  = {} // childId   → Set<parentId>
+  const spousesOf  = {} // personId  → personId[]
+
+  persons.forEach(p => {
+    p.relationships?.forEach(r => {
       if (r.type === 'CHILD') {
-        // p is the parent of r.person
-        if (!childrenOf[p.id]) childrenOf[p.id] = []
-        if (!childrenOf[p.id].includes(r.person.id)) childrenOf[p.id].push(r.person.id)
-        parentOf[r.person.id] = p.id
+        if (!childrenOf[p.id]) childrenOf[p.id] = new Set()
+        childrenOf[p.id].add(r.person.id)
+        if (!parentsOf[r.person.id]) parentsOf[r.person.id] = new Set()
+        parentsOf[r.person.id].add(p.id)
       }
-      if (r.type === 'SPOUSE') spouseOf[p.id] = r.person.id
+      if (r.type === 'SPOUSE') {
+        if (!spousesOf[p.id]) spousesOf[p.id] = []
+        if (!spousesOf[p.id].includes(r.person.id)) spousesOf[p.id].push(r.person.id)
+      }
     })
   })
 
-  // BFS to assign generation levels
-  const levels = {}
-  const hasParent = new Set(Object.keys(parentOf))
-  const roots = persons.filter((p) => !hasParent.has(p.id)).map((p) => p.id)
-  const queue = roots.map((id) => ({ id, level: 0 }))
+  // ── 2. Assigner les générations via BFS (parents → enfants) ────────────
+  const gen = {}
+  const roots = persons.filter(p => !parentsOf[p.id]?.size).map(p => p.id)
+  const queue = roots.map(id => [id, 0])
   const visited = new Set()
-  while (queue.length) {
-    const { id, level } = queue.shift()
-    if (visited.has(id)) continue
+  for (let i = 0; i < queue.length; i++) {
+    const [id, g] = queue[i]
+    if (visited.has(id)) { gen[id] = Math.max(gen[id] || 0, g); continue }
     visited.add(id)
-    levels[id] = level
-    ;(childrenOf[id] || []).forEach((cid) => queue.push({ id: cid, level: level + 1 }))
+    gen[id] = g
+    for (const cid of (childrenOf[id] || [])) queue.push([cid, g + 1])
   }
-  persons.forEach((p) => { if (!(p.id in levels)) levels[p.id] = 0 })
+  persons.forEach(p => { if (!(p.id in gen)) gen[p.id] = 0 })
 
-  // Group by level
-  const byLevel = {}
-  persons.forEach((p) => {
-    const l = levels[p.id]
-    if (!byLevel[l]) byLevel[l] = []
-    byLevel[l].push(p.id)
+  // Synchroniser les conjoints sur la même génération (max des deux)
+  let changed = true
+  while (changed) {
+    changed = false
+    persons.forEach(p => {
+      (spousesOf[p.id] || []).forEach(sid => {
+        const maxG = Math.max(gen[p.id] || 0, gen[sid] || 0)
+        if (gen[p.id] !== maxG) { gen[p.id] = maxG; changed = true }
+        if (gen[sid] !== maxG) { gen[sid] = maxG; changed = true }
+      })
+    })
+  }
+
+  // ── 3. Grouper par génération ────────────────────────────────────────────
+  const byGen = {}
+  persons.forEach(p => {
+    const g = gen[p.id] || 0
+    if (!byGen[g]) byGen[g] = []
+    if (!byGen[g].includes(p.id)) byGen[g].push(p.id)
   })
 
-  // Assign x/y positions
-  const positions = {}
-  Object.entries(byLevel).forEach(([level, ids]) => {
-    const totalW = ids.length * NODE_W
+  // ── 4. Ré-ordonner chaque génération : conjoints adjacents ───────────────
+  Object.keys(byGen).forEach(g => {
+    const ids = byGen[g]
+    const ordered = []
+    const seen = new Set()
+    ids.forEach(id => {
+      if (seen.has(id)) return
+      seen.add(id)
+      ordered.push(id)
+      // Ajouter les conjoints immédiatement à droite
+      ;(spousesOf[id] || []).forEach(sid => {
+        if (!seen.has(sid) && ids.includes(sid)) {
+          seen.add(sid)
+          ordered.push(sid)
+        }
+      })
+    })
+    byGen[g] = ordered
+  })
+
+  // ── 5. Assigner les positions X/Y ────────────────────────────────────────
+  // On utilise un layout en deux passes :
+  //   Passe 1 : positions X naïves par génération (centré)
+  //   Passe 2 : ajuster X des enfants pour les centrer sous leurs parents
+
+  const pos = {}
+
+  // Passe 1 : position naïve centrée
+  Object.entries(byGen).forEach(([g, ids]) => {
+    const totalW = ids.length * (NODE_W + H_GAP) - H_GAP
+    const startX = -totalW / 2
     ids.forEach((id, i) => {
-      positions[id] = { x: i * NODE_W - totalW / 2 + NODE_W / 2, y: parseInt(level) * NODE_H }
+      pos[id] = {
+        x: startX + i * (NODE_W + H_GAP),
+        y: parseInt(g) * (NODE_H + V_GAP),
+      }
     })
   })
-  return positions
+
+  // Passe 2 : centrer les enfants sous le milieu de leurs parents
+  const maxGen = Math.max(...Object.keys(byGen).map(Number))
+  for (let g = 1; g <= maxGen; g++) {
+    const ids = byGen[g] || []
+    ids.forEach(id => {
+      const myParents = [...(parentsOf[id] || [])]
+      if (!myParents.length) return
+      // Milieu X des parents
+      const parentXs = myParents.map(pid => pos[pid]?.x || 0)
+      const midParentX = parentXs.reduce((a, b) => a + b, 0) / parentXs.length
+      // Trouver les frères/sœurs (même parents)
+      const siblings = ids.filter(sid => {
+        const sp = [...(parentsOf[sid] || [])]
+        return sp.some(p => myParents.includes(p))
+      })
+      const sibIdx = siblings.indexOf(id)
+      const totalSibW = siblings.length * (NODE_W + H_GAP) - H_GAP
+      pos[id] = {
+        ...pos[id],
+        x: midParentX - totalSibW / 2 + sibIdx * (NODE_W + H_GAP),
+      }
+    })
+  }
+
+  return pos
 }
 
 function toFlow(persons, handlers) {
@@ -74,6 +155,7 @@ function toFlow(persons, handlers) {
       onAddSibling: () => handlers.addRelative(p, 'SIBLING'),
       onEdit: () => handlers.edit(p),
       onDelete: () => handlers.del(p),
+      onWizard: () => handlers.openWizard(p),
     },
   }))
 
@@ -197,6 +279,13 @@ export default function FamilyTree() {
   const [showNewTree, setShowNewTree] = useState(false)
   const [newTreeForm, setNewTreeForm] = useState({ name: '', description: '' })
 
+  // Wizard FIFO
+  const [wizardQueue, setWizardQueue] = useState([])
+  const [wizardVisible, setWizardVisible] = useState(false)
+  // Second parent dialog (quand on ajoute un enfant manuellement)
+  const [secondParentCtx, setSecondParentCtx] = useState(null)
+  // { newPersonId, newPersonFirstName, newPersonLastName, parentName, spouseId, spouseName }
+
   // Modals
   const [addPersonCtx, setAddPersonCtx] = useState(null)   // { relatedTo: Person|null, relationType: string|null }
   const [editPersonCtx, setEditPersonCtx] = useState(null) // Person
@@ -229,6 +318,15 @@ export default function FamilyTree() {
     addRelative: (person, relationType) => setAddPersonCtx({ relatedTo: person, relationType }),
     edit: (person) => setEditPersonCtx(person),
     del: (person) => setDeletePersonCtx(person),
+    openWizard: (person) => {
+      setWizardQueue(q => {
+        const alreadyIn = q.some(p => p.personId === person.id)
+        if (alreadyIn) return q
+        // Mettre cette personne en tête de file
+        return [{ personId: person.id, firstName: person.firstName, lastName: person.lastName }, ...q]
+      })
+      setWizardVisible(true)
+    },
   }), [])
 
   useEffect(() => {
@@ -242,10 +340,12 @@ export default function FamilyTree() {
   // ── Handlers ────────────────────────────────────────────────────────────
   const handleCreateTree = async (e) => {
     e.preventDefault()
-    await createTree({ variables: { input: newTreeForm } })
+    const { data } = await createTree({ variables: { input: newTreeForm } })
     await refetchTrees()
     setShowNewTree(false)
     setNewTreeForm({ name: '', description: '' })
+    // Auto-sélectionner l'arbre qui vient d'être créé
+    setSelectedTreeId(data.createFamilyTree.id)
   }
 
   const handleAddPerson = async (form) => {
@@ -257,12 +357,9 @@ export default function FamilyTree() {
 
       if (addPersonCtx?.relatedTo && addPersonCtx?.relationType) {
         const { relatedTo, relationType } = addPersonCtx
-        // Create the relationship from the reference person to the new person
         if (relationType === 'CHILD') {
-          // relatedTo is the parent → addRelationship(relatedTo.id, newPersonId, CHILD)
           await addRelationshipMut({ variables: { personId: relatedTo.id, relatedPersonId: newPersonId, type: 'CHILD' } })
         } else if (relationType === 'PARENT') {
-          // newPerson is the parent of relatedTo → addRelationship(newPersonId, relatedTo.id, CHILD)
           await addRelationshipMut({ variables: { personId: newPersonId, relatedPersonId: relatedTo.id, type: 'CHILD' } })
         } else if (relationType === 'SPOUSE') {
           await addRelationshipMut({ variables: { personId: relatedTo.id, relatedPersonId: newPersonId, type: 'SPOUSE' } })
@@ -276,9 +373,57 @@ export default function FamilyTree() {
       await refetchTree()
       await refetchTrees()
       setAddPersonCtx(null)
+
+      if (!addPersonCtx?.relatedTo) {
+        // Première personne de l'arbre → wizard complet
+        setWizardQueue([{ personId: newPersonId, firstName: cleanForm.firstName, lastName: cleanForm.lastName, profile: 'full' }])
+        setWizardVisible(true)
+
+      } else if (addPersonCtx?.relationType === 'CHILD') {
+        // Enfant ajouté manuellement → chercher si le parent a un(e) conjoint(e)
+        const parentData = persons.find(p => p.id === addPersonCtx.relatedTo.id)
+        const spouse = parentData?.relationships?.find(r => r.type === 'SPOUSE')?.person
+        if (spouse) {
+          // Proposer de lier au second parent
+          setSecondParentCtx({
+            newPersonId,
+            newPersonFirstName: cleanForm.firstName,
+            newPersonLastName: cleanForm.lastName,
+            parentName: `${addPersonCtx.relatedTo.firstName} ${addPersonCtx.relatedTo.lastName}`,
+            spouseId: spouse.id,
+            spouseName: `${spouse.firstName} ${spouse.lastName}`,
+          })
+        } else {
+          // Pas de conjoint connu → juste ajouter à la file
+          setWizardQueue(q => q.some(x => x.personId === newPersonId) ? q
+            : [...q, { personId: newPersonId, firstName: cleanForm.firstName, lastName: cleanForm.lastName, profile: 'child' }])
+        }
+
+      } else if (addPersonCtx?.relationType === 'PARENT') {
+        // Nouveau parent ajouté manuellement → leurs parents déjà gérés
+        setWizardQueue(q => q.some(x => x.personId === newPersonId) ? q
+          : [...q, { personId: newPersonId, firstName: cleanForm.firstName, lastName: cleanForm.lastName, profile: 'parent' }])
+      }
     } finally {
       setSaving(false)
     }
+  }
+
+  // ── Confirmation second parent ────────────────────────────────────────────
+  const handleConfirmSecondParent = async (confirm) => {
+    const ctx = secondParentCtx
+    setSaving(true)
+    try {
+      if (confirm) {
+        await addRelationshipMut({ variables: { personId: ctx.spouseId, relatedPersonId: ctx.newPersonId, type: 'CHILD' } })
+        await refetchTree()
+      }
+    } finally {
+      setSaving(false)
+    }
+    setSecondParentCtx(null)
+    setWizardQueue(q => q.some(x => x.personId === ctx.newPersonId) ? q
+      : [...q, { personId: ctx.newPersonId, firstName: ctx.newPersonFirstName, lastName: ctx.newPersonLastName, profile: 'child' }])
   }
 
   const handleEditPerson = async (form) => {
@@ -338,6 +483,17 @@ export default function FamilyTree() {
         )}
         {selectedTreeId && (
           <FileUpload onFileSelect={handleGedcomImport} accept=".ged,.gedcom" label="📂 Import GEDCOM" />
+        )}
+        {wizardQueue.length > 0 && (
+          <button
+            style={{ ...S.btn, background: wizardVisible ? '#8e44ad' : '#9b59b6', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+            onClick={() => setWizardVisible(v => !v)}
+          >
+            🧙 {wizardVisible ? 'Masquer' : 'Reprendre'} l'assistant
+            <span style={{ background: 'rgba(255,255,255,0.25)', borderRadius: 12, padding: '0 6px', fontSize: '0.78rem', fontWeight: 700 }}>
+              {wizardQueue.length}
+            </span>
+          </button>
         )}
         <span style={{ color: '#aac', fontSize: '0.8rem', marginLeft: 'auto' }}>
           Survolez un nœud pour ajouter des membres ou modifier
@@ -452,6 +608,50 @@ export default function FamilyTree() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Dialog second parent ── */}
+      {secondParentCtx && (
+        <div style={S.overlay}>
+          <div style={{ ...S.card, width: 430 }}>
+            <div style={S.cardTitle}>👨‍👩‍👦 Second parent ?</div>
+            <p style={{ color: '#444', marginBottom: '1.25rem', lineHeight: 1.6 }}>
+              <strong>{secondParentCtx.newPersonFirstName} {secondParentCtx.newPersonLastName}</strong> vient
+              d'être ajouté(e) comme enfant de <strong>{secondParentCtx.parentName}</strong>.<br /><br />
+              Est-ce que <strong style={{ color: '#2471a3' }}>{secondParentCtx.spouseName}</strong> est
+              également le/la parent(e) de{' '}
+              <strong>{secondParentCtx.newPersonFirstName}</strong> ?
+            </p>
+            <div style={S.actions}>
+              <button style={S.btnGhost} onClick={() => handleConfirmSecondParent(false)}>Non</button>
+              <button style={S.btnGreen} onClick={() => handleConfirmSecondParent(true)} disabled={saving}>
+                {saving ? '...' : `Oui, lier à ${secondParentCtx.spouseName}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Wizard assistant famille ── */}
+      {selectedTreeId && (
+        <FamilyWizard
+          visible={wizardVisible}
+          queue={wizardQueue}
+          persons={persons}
+          onPersonDone={() => setWizardQueue(q => q.slice(1))}
+          onAddToQueue={(p) => setWizardQueue(q => {
+            if (q.some(x => x.personId === p.personId)) return q
+            return [...q, p]
+          })}
+          onUpdateQueueItem={(personId, updates) => setWizardQueue(q =>
+            q.map(item => item.personId === personId ? { ...item, ...updates } : item)
+          )}
+          onClose={() => setWizardVisible(false)}
+          treeId={selectedTreeId}
+          addPersonMut={addPersonMut}
+          addRelationshipMut={addRelationshipMut}
+          refetchTree={async () => { await refetchTree(); await refetchTrees() }}
+        />
       )}
     </div>
   )

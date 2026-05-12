@@ -77,6 +77,7 @@ export default function TreeNode({ data }) {
           {btn('👶', data.onAddChild, 'Ajouter un enfant')}
           {btn('💍', data.onAddSpouse, 'Ajouter conjoint(e)')}
           {btn('👫', data.onAddSibling, 'Ajouter frère/sœur')}
+          {btn('🧙', data.onWizard, 'Assistant famille — construire les proches')}
           {btn('✏️', data.onEdit, 'Modifier')}
           {btn('🗑️', data.onDelete, 'Supprimer')}
         </div>
